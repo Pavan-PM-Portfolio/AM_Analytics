@@ -2209,7 +2209,7 @@ const SPEC={
   // the book attributes to the owner. Never mix them.
   dealOwnerCol:'Course Deal Owner',
   optional:['Phone','Country','Last Certified','Last Certified Date','Ad Source','Source','Last Source','Last Ad Source','Access Revoked','Last Access Revoked','Last Access Revoked Date'],
-  defaultAM:['Shalu Tripathy','Deepthi RP','Mohammed Asif','Shivangi Sharma','Nivas N'],
+  defaultAM:['Shalu Tripathy','Deepthi RP','Mohammed Asif','Shivangi Sharma','Nivas N','Reeshav Sharma'],
   saleStagePrefix:'Closed Won',   // a sale = stage starts with this AND amount > 0
   // Access revocation is READ from the export, never derived. Earlier versions
   // inferred it as Closing Date + 365d; the real flag disagreed 52% of the time.
@@ -2425,7 +2425,7 @@ function buildModel(rows,amList){
 }
 
 /* ---------- config (AM roster) ---------- */
-const LSK='ehs.am.roster';
+const LSK='ehs.am.roster.v2';
 function loadRoster(){try{const v=localStorage.getItem(LSK);return v?JSON.parse(v):null;}catch(e){return null;}}
 function saveRoster(a){try{localStorage.setItem(LSK,JSON.stringify(a));}catch(e){}}
 
