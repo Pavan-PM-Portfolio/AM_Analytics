@@ -435,7 +435,7 @@ let CIDX=new Map();
 /* Slicers. scope 'report' = always on. Others apply ONLY on the tabs listed,
    so a hidden slicer never filters invisibly. */
 const SLICERS=[
-  {k:'book',label:'Team',tabs:['overview','amteam','cohorts','reps','customers','upsell'],fixed:[['all','All owners'],['am','AM team'],['nonam','Others']],
+  {k:'book',label:'Team',tabs:['overview','amteam','cohorts','reps','customers','upsell'],fixed:[['all','All owners'],['am','Up-sell team'],['nonam','Others']],
    count:v=>tally('book',c=>c.am?'am':'nonam').get(v)||0},
   {k:'owner',label:'Account owner',scope:'report',dyn:()=>tally('owner',c=>c.o)},
   {k:'ptype',label:'Type',tabs:['overview','amteam'],
@@ -807,7 +807,7 @@ function renderOverview(){
      <td class="n">${everP.toFixed(1)}%</td></tr>
    </tbody></table></div>
    <div class="hint">"Had the chance" only counts accounts old enough to have reached that window — an account bought last month hasn't had a year to buy again, so counting it as a no would understate the rate.</div>
-   ${med!=null?`<div class="insight"><b>Half of second purchases land within ${med} days, and ${fpct(tim[0].n,rp.length)} inside 90 days.</b> The window is short and it closes fast — ${fpct(tim[3].n,rp.length)} of repeat accounts take over 2 years. Since the AM handoff happens at day 90, the team inherits accounts <i>after</i> the moment most second purchases already happened.</div>`:''}
+   ${med!=null?`<div class="insight"><b>Half of second purchases land within ${med} days, and ${fpct(tim[0].n,rp.length)} inside 90 days.</b> The window is short and it closes fast — ${fpct(tim[3].n,rp.length)} of repeat accounts take over 2 years. Since the Up-sell handoff happens at day 90, the team inherits accounts <i>after</i> the moment most second purchases already happened.</div>`:''}
    </div></div>`;
 
   /* --- account vintage --- */
@@ -833,7 +833,7 @@ function renderOverview(){
   h+=`</tbody></table></div>`;
   if(vRows.length>1){
     const newest=vRows[vRows.length-1], oldest=vRows[0];
-    h+=`<div class="insight">Retention is the share of a cohort that bought again within the last year. It decays sharply with age — ${newest.y} sits at ${fpct(newest.live,newest.n)}, ${oldest.y} at ${fpct(oldest.live,oldest.n)}. Older cohorts are the dormant book the AM team is meant to reawaken.</div>`;}
+    h+=`<div class="insight">Retention is the share of a cohort that bought again within the last year. It decays sharply with age — ${newest.y} sits at ${fpct(newest.live,newest.n)}, ${oldest.y} at ${fpct(oldest.live,oldest.n)}. Older cohorts are the dormant book the Up-sell team is meant to reawaken.</div>`;}
   h+=`</div>`;
 
   /* --- who holds the accounts: AM members individually, everyone else pooled --- */
@@ -849,9 +849,9 @@ function renderOverview(){
     .concat([{label:`Others · ${oth.n} owners`,v:oth.cu,c:'var(--d3)',
       disp:`${oth.cu.toLocaleString('en-IN')} · ${fpct(oth.cu,grandCu)}`}]);
   h+=`<div class="card panel"><h3>Who holds the accounts</h3>
-   <div class="desc">Accounts per AM team member, with everyone else pooled.</div>
+   <div class="desc">Accounts per Up-sell team member, with everyone else pooled.</div>
    ${barRows.length?hbars(barRows,{lw:130,vw:112}):'<div class="empty">Nothing in this selection.</div>'}
-   <div class="hint">${grandCu.toLocaleString('en-IN')} accounts in view, attributed by Owner. The AM roster is editable in Settings.</div></div></div>`;
+   <div class="hint">${grandCu.toLocaleString('en-IN')} accounts in view, attributed by Owner. The Up-sell roster is editable in Settings.</div></div></div>`;
 
   /* --- repeat behaviour (one panel: frequency, pattern, by first course) --- */
   const B=[[1,1,'1x'],[2,2,'2x'],[3,3,'3x'],[4,4,'4x'],[5,999,'5x+']];
@@ -938,7 +938,7 @@ function eventSales(evt){
     ts:(x.fresh+x.later)?Math.round((x.freshR+x.laterR)/(x.fresh+x.later)):0}));
 }
 /* Team cert/revoke-driven sales, one row per month from the rule start. Leads are
-   AM-owned accounts whose event fell in that month; fresh/later sales are AM
+   Up-sell-owned accounts whose event fell in that month; fresh/later sales are AM
    closings in that month (same month as the account's event, or after). */
 function eventSalesMonthly(evt){
   const start=new Date(SPEC.ruleStart+'T00:00:00');
@@ -969,6 +969,7 @@ function eventSalesMonthly(evt){
    accounts AFTER the event (repeat sale to a certified / access-revoked learner —
    not lifetime value), since the rule began (Oct 2025). Con % = sales ÷ accounts. */
 function eventAcctPerf(evt){
+  if(evt==='90d')return ninetyPerf();
   const acctIdx={},evAge=new Map();
   CU.forEach((c,i)=>{if(!custPassND[i])return;const has=evt==='cert'?certified(c):revoked(c);if(!has)return;
     (acctIdx[c.o]=acctIdx[c.o]||new Set()).add(i);
@@ -981,12 +982,13 @@ function eventAcctPerf(evt){
     if(FT.dG[i]>ruleMaxAge)continue;                 // from Oct 2025
     const ci=FT.dU[i],own=idxOwner.get(ci);if(!own)continue;
     const a=evAge.get(ci);if(a<0||FT.dG[i]>=a)continue;   // resale only: deal closed AFTER the event
-    const x=perf[own]=perf[own]||{d:0,r:0};x.d++;x.r+=FT.dA[i];
+    const x=perf[own]=perf[own]||{d:0,r:0,r2:0};x.d++;x.r+=FT.dA[i];x.r2+=FT.dAR[i];
   }
-  return TEAM.map(o=>{const accts=acctIdx[o]?acctIdx[o].size:0,s=perf[o]||{d:0,r:0};return{o,accts,d:s.d,r:s.r};});
+  return TEAM.map(o=>{const accts=acctIdx[o]?acctIdx[o].size:0,s=perf[o]||{d:0,r:0,r2:0};return{o,accts,d:s.d,r:s.r,r2:s.r2||0};});
 }
 /* Non-AM aggregate for the Certified / Access-Revoked tables' "Others" row. */
 function eventOthers(evt){
+  if(evt==='90d')return ninetyOthers();
   const acctIdx={},evAge=new Map();
   CU.forEach((c,i)=>{if(!custPassND[i]||TEAM.includes(c.o))return;const has=evt==='cert'?certified(c):revoked(c);if(!has)return;
     (acctIdx[c.o]=acctIdx[c.o]||new Set()).add(i);evAge.set(i,evt==='cert'?c.ctd:c.ard);});
@@ -994,23 +996,24 @@ function eventOthers(evt){
   for(const own in acctIdx)acctIdx[own].forEach(i=>idxOwner.set(i,own));
   const ruleMaxAge=Math.round((TDAY.getTime()-Date.parse(SPEC.ruleStart+'T00:00:00'))/DAY);
   let accts=0; for(const own in acctIdx)accts+=acctIdx[own].size;
-  let d=0,r=0;
+  let d=0,r=0,r2=0;
   for(let i=0;i<NDEAL;i++){
     if(FT.dG[i]>ruleMaxAge)continue;
     const ci=FT.dU[i];if(!idxOwner.has(ci))continue;
     const a=evAge.get(ci);if(a<0||FT.dG[i]>=a)continue;
-    d++;r+=FT.dA[i];
+    d++;r+=FT.dA[i];r2+=FT.dAR[i];
   }
-  return{o:'Others',accts,d,r};
+  return{o:'Others',accts,d,r,r2};
 }
 /* Team monthly for the same tables: accounts with the event in each month, and
    post-event repeat sales from all event accounts closed that month. */
 function eventAcctMonthly(evt){
+  if(evt==='90d')return ninetyMonthly();
   const start=new Date(SPEC.ruleStart+'T00:00:00');
   const months=[]; let d=new Date(start.getFullYear(),start.getMonth(),1);
   const end=new Date(TDAY.getFullYear(),TDAY.getMonth(),1);
   while(d<=end){months.push(d.toISOString().slice(0,7));d=new Date(d.getFullYear(),d.getMonth()+1,1);}
-  const m={}; months.forEach(mo=>m[mo]={mo,_acc:new Set(),d:0,r:0});
+  const m={}; months.forEach(mo=>m[mo]={mo,_acc:new Set(),d:0,r:0,r2:0});
   const evAge=new Map();
   CU.forEach((c,i)=>{if(!custPassND[i]||!AM.includes(c.o))return;
     const has=evt==='cert'?c.ct:c.ar,age=evt==='cert'?c.ctd:c.ard;if(!has)return;evAge.set(i,age);
@@ -1018,9 +1021,71 @@ function eventAcctMonthly(evt){
   for(let i=0;i<NDEAL;i++){
     const ci=FT.dU[i];if(!evAge.has(ci))continue;
     const a=evAge.get(ci);if(a<0||FT.dG[i]>=a)continue;   // resale only: after the event
-    const mo=MONTHS[FT.dM[i]];if(m[mo]){m[mo].d++;m[mo].r+=FT.dA[i];}
+    const mo=MONTHS[FT.dM[i]];if(m[mo]){m[mo].d++;m[mo].r+=FT.dA[i];m[mo].r2+=FT.dAR[i];}
   }
-  return months.map(mo=>{const x=m[mo];return{mo,accts:x._acc.size,d:x.d,r:x.r};});
+  return months.map(mo=>{const x=m[mo];return{mo,accts:x._acc.size,d:x.d,r:x.r,r2:x.r2};});
+}
+/* ---- 90-day handoffs: a purchase crossing 90 days is a fresh handoff.
+   Count = deal handoffs whose 90-day mark falls in the window (matches Team Performance's 90d).
+   Sales / Revenue = deals those accounts closed AFTER the handoff (repeat purchases). ---- */
+function ninetyCore(){
+  const gR=rangeG();
+  const inRange=age=>age>=0&&(!gR||(age>=gR[0]&&age<=gR[1]));
+  const ruleMaxAge=Math.round((TDAY.getTime()-Date.parse(SPEC.ruleStart+'T00:00:00'))/DAY);
+  const cnt={}, evAge=new Map(), owner=new Map();
+  for(let i=0;i<NDEAL;i++){
+    if(!custPassND[FT.dU[i]]||FT.dG[i]>ruleMaxAge)continue;
+    const h=FT.dG[i]-90; if(!inRange(h))continue;
+    const ci=FT.dU[i], o=CU[ci].o;
+    cnt[o]=(cnt[o]||0)+1;
+    if(!evAge.has(ci)||h>evAge.get(ci))evAge.set(ci,h);
+    owner.set(ci,o);
+  }
+  const perf={};
+  for(let i=0;i<NDEAL;i++){
+    const ci=FT.dU[i]; if(!evAge.has(ci)||FT.dG[i]>ruleMaxAge)continue;
+    if(FT.dG[i]>=evAge.get(ci))continue;                 // closed AFTER the handoff = repeat purchase
+    const o=owner.get(ci); (perf[o]=perf[o]||{d:0,r:0,r2:0}); perf[o].d++; perf[o].r+=FT.dA[i]; perf[o].r2+=FT.dAR[i];
+  }
+  return {cnt,perf};
+}
+function ninetyPerf(){const{cnt,perf}=ninetyCore();return TEAM.map(o=>({o,accts:cnt[o]||0,d:(perf[o]||{d:0}).d,r:(perf[o]||{r:0}).r,r2:(perf[o]||{r2:0}).r2||0}));}
+function ninetyOthers(){const{cnt,perf}=ninetyCore();let accts=0,d=0,r=0,r2=0;
+  for(const o in cnt)if(!TEAM.includes(o))accts+=cnt[o];
+  for(const o in perf)if(!TEAM.includes(o)){d+=perf[o].d;r+=perf[o].r;r2+=perf[o].r2;}
+  return{o:'Others',accts,d,r,r2};}
+function ninetyMonthly(){
+  const start=new Date(SPEC.ruleStart+'T00:00:00');
+  const months=[]; let d=new Date(start.getFullYear(),start.getMonth(),1);
+  const end=new Date(TDAY.getFullYear(),TDAY.getMonth(),1);
+  while(d<=end){months.push(d.toISOString().slice(0,7));d=new Date(d.getFullYear(),d.getMonth()+1,1);}
+  const m={}; months.forEach(mo=>m[mo]={mo,accts:0,d:0,r:0,r2:0});
+  const ruleMaxAge=Math.round((TDAY.getTime()-Date.parse(SPEC.ruleStart+'T00:00:00'))/DAY);
+  const evAge=new Map(), evMonth=new Map();
+  for(let i=0;i<NDEAL;i++){
+    if(!custPassND[FT.dU[i]]||FT.dG[i]>ruleMaxAge)continue;
+    if(!TEAM.includes(CU[FT.dU[i]].o))continue;
+    const h=FT.dG[i]-90; if(h<0)continue;
+    const mo=isoOf(TDAY.getTime()-h*DAY).slice(0,7);
+    if(m[mo]){m[mo].accts++; const ci=FT.dU[i]; if(!evAge.has(ci)||h>evAge.get(ci)){evAge.set(ci,h);evMonth.set(ci,mo);}}
+  }
+  for(let i=0;i<NDEAL;i++){
+    const ci=FT.dU[i]; if(!evAge.has(ci)||FT.dG[i]>ruleMaxAge)continue;
+    if(FT.dG[i]>=evAge.get(ci))continue;
+    const mo=evMonth.get(ci); if(m[mo]){m[mo].d++;m[mo].r+=FT.dA[i];m[mo].r2+=FT.dAR[i];}
+  }
+  return months.map(mo=>m[mo]);
+}
+function ninetyAccountsFor(name){
+  const gR=rangeG();const inRange=age=>age>=0&&(!gR||(age>=gR[0]&&age<=gR[1]));
+  const ruleMaxAge=Math.round((TDAY.getTime()-Date.parse(SPEC.ruleStart+'T00:00:00'))/DAY);
+  const set=new Set();
+  for(let i=0;i<NDEAL;i++){
+    if(!custPassND[FT.dU[i]]||FT.dG[i]>ruleMaxAge)continue;
+    if(CU[FT.dU[i]].o!==name)continue;
+    if(inRange(FT.dG[i]-90))set.add(FT.dU[i]);
+  }
+  return [...set].map(i=>CU[i]);
 }
 /* Post-event repeat sales for one drawer's book, by month (drives the cert/revoke drawers). */
 function resaleMonthly(book,evt){
@@ -1083,7 +1148,7 @@ function freshRevenue(){
     if(c.ct&&inRange(c.ctd))x._lCert.add(i);
     if(revoked(c))x._lRev.add(i);
   });
-  // 90d handoff: a lead enters the AM round robin 90 days after a deal closed.
+  // 90d handoff: a lead enters the Up-sell round robin 90 days after a deal closed.
   // The rule only began in Oct 2025, so only deals that closed from Oct 2025
   // onward are subject to it — earlier closings never went through the round robin.
   // Count the distinct LEAD once if ANY of its qualifying deals crosses 90 days
@@ -1109,7 +1174,7 @@ function freshRevenue(){
       ts:x.d?Math.round(x.r/x.d):0};});
 }
 /* Per-agent sales & revenue (as Course Deal Owner) on deals closed from the rule
-   start (Oct 2025) — the resale revenue the AM team has generated, not lifetime. */
+   start (Oct 2025) — the resale revenue the Up-sell team has generated, not lifetime. */
 function agentSalesFromRule(){
   const ruleMaxAge=Math.round((TDAY.getTime()-Date.parse(SPEC.ruleStart+'T00:00:00'))/DAY);
   const m={};
@@ -1120,15 +1185,15 @@ function agentSalesFromRule(){
   }
   return m;
 }
-/* Same shape as the agent table, consolidated for the whole AM team, one row per
-   month from the rule start (Oct 2025). Fresh columns count AM-owned accounts by
-   the month of their event; sales & revenue are AM closings in that month. */
+/* Same shape as the agent table, consolidated for the whole Up-sell team, one row per
+   month from the rule start (Oct 2025). Fresh columns count Up-sell-owned accounts by
+   the month of their event; sales & revenue are Up-sell closings in that month. */
 function teamMonthly(){
   const start=new Date(SPEC.ruleStart+'T00:00:00');
   const months=[]; let d=new Date(start.getFullYear(),start.getMonth(),1);
   const end=new Date(TDAY.getFullYear(),TDAY.getMonth(),1);
   while(d<=end){months.push(d.toISOString().slice(0,7));d=new Date(d.getFullYear(),d.getMonth()+1,1);}
-  const m={}; months.forEach(mo=>m[mo]={mo,_90:new Set(),_ct:new Set(),_rv:new Set(),_n90:0,totalD:0,totalR:0,freshD:0,freshR:0});
+  const m={}; months.forEach(mo=>m[mo]={mo,_90:new Set(),_ct:new Set(),_rv:new Set(),_n90:0,totalD:0,totalR:0,totalR2:0,freshD:0,freshR:0});
   const ruleMaxAge=Math.round((TDAY.getTime()-Date.parse(SPEC.ruleStart+'T00:00:00'))/DAY);
   const toMo=age=>isoOf(TDAY.getTime()-age*DAY).slice(0,7);
   for(let i=0;i<NDEAL;i++){                                   // 90d handoffs, by handoff month (deal-level)
@@ -1137,7 +1202,7 @@ function teamMonthly(){
     const g=FT.dG[i]-90; if(g<0)continue;
     const mo=toMo(g); if(m[mo]){m[mo]._90.add(ci);m[mo]._n90++;}
   }
-  CU.forEach((c,i)=>{                                          // cert / revoke, AM-owned, by event month
+  CU.forEach((c,i)=>{                                          // cert / revoke, Up-sell-owned, by event month
     if(!custPassND[i]||!TEAM.includes(c.o))return;
     if(c.ct&&c.ctd>=0){const mo=toMo(c.ctd);if(m[mo])m[mo]._ct.add(i);}
     if(c.ar&&c.ard>=0){const mo=toMo(c.ard);if(m[mo])m[mo]._rv.add(i);}
@@ -1146,12 +1211,12 @@ function teamMonthly(){
   for(let i=0;i<NDEAL;i++){                                   // sales by close month
     if(!custPassND[FT.dU[i]]||FT.dG[i]>ruleMaxAge)continue;
     const mo=MONTHS[FT.dM[i]]; if(!m[mo])continue; const ci=FT.dU[i];
-    if(TEAM.includes(ODIM[FT.dO[i]])){m[mo].totalD++;m[mo].totalR+=FT.dA[i];}         // Overall: closed by team (Course Deal Owner)
+    if(TEAM.includes(ODIM[FT.dO[i]])){m[mo].totalD++;m[mo].totalR+=FT.dA[i];m[mo].totalR2+=FT.dAR[i];}         // Overall: closed by team (Course Deal Owner)
     if(freshSet[mo].has(ci)){m[mo].freshD++;m[mo].freshR+=FT.dA[i];}                  // Fresh: that month's cohort
   }
   return months.map(mo=>{const x=m[mo];const n90=x._n90,nCert=x._ct.size,nRev=x._rv.size;
     const uniq=new Set([...x._90,...x._ct,...x._rv]).size;
-    return{mo,n90,nCert,nRev,uniq,leads:n90+nCert+nRev,totalD:x.totalD,totalR:x.totalR,freshD:x.freshD,freshR:x.freshR};});
+    return{mo,n90,nCert,nRev,uniq,leads:n90+nCert+nRev,totalD:x.totalD,totalR:x.totalR,totalR2:x.totalR2,freshD:x.freshD,freshR:x.freshR};});
 }
 /* Per-agent total & fresh sales for the current filter window: Total = deals the
    agent closed in the window; Fresh = deals from their fresh accounts (accounts
@@ -1162,11 +1227,11 @@ function teamPerf(){
   const ruleMaxAge=Math.round((TDAY.getTime()-Date.parse(SPEC.ruleStart+'T00:00:00'))/DAY);
   const winFresh=new Map();
   freshTriggerAges(()=>true).forEach((age,i)=>winFresh.set(i,CU[i].o));      // accounts fresh IN the window (cohort)
-  const tot={}, fr={}; TEAM.forEach(o=>{tot[o]={d:0,r:0};fr[o]={d:0,r:0};});
-  const oTot={d:0,r:0}, oFr={d:0,r:0};
+  const tot={}, fr={}; TEAM.forEach(o=>{tot[o]={d:0,r:0,r2:0};fr[o]={d:0,r:0};});
+  const oTot={d:0,r:0,r2:0}, oFr={d:0,r:0};
   for(let i=0;i<NDEAL;i++){
     if(!custPassND[FT.dU[i]]||FT.dG[i]>ruleMaxAge||!inRange(FT.dG[i]))continue;   // closed-won in the selected window
-    const cl=ODIM[FT.dO[i]]; if(tot[cl]){tot[cl].d++;tot[cl].r+=FT.dA[i];} else {oTot.d++;oTot.r+=FT.dA[i];}   // Overall: credited to Course Deal Owner (closer)
+    const cl=ODIM[FT.dO[i]]; if(tot[cl]){tot[cl].d++;tot[cl].r+=FT.dA[i];tot[cl].r2+=FT.dAR[i];} else {oTot.d++;oTot.r+=FT.dA[i];oTot.r2+=FT.dAR[i];}   // Overall: credited to Course Deal Owner (closer)
     const wo=winFresh.get(FT.dU[i]); if(wo!==undefined){if(fr[wo]){fr[wo].d++;fr[wo].r+=FT.dA[i];} else {oFr.d++;oFr.r+=FT.dA[i];}}  // Fresh: from this window's cohort, by owner
   }
   return {tot,fr,oTot,oFr};
@@ -1338,7 +1403,7 @@ function renderAMTeam(){
   if(!fDeal.length)return `<div class="card panel"><div class="empty">No deals match these filters.</div></div>`;
   TEAM = AM;
   const AMF=agentMonthFull();
-  // agents in view, AM roster first
+  // agents in view, Up-sell roster first
   const inView=Object.keys(AMF);
   const agents=AM.filter(o=>inView.includes(o)).concat(inView.filter(o=>!AM.includes(o)));
   const roster=AM.filter(o=>inView.includes(o));
@@ -1358,11 +1423,11 @@ function renderAMTeam(){
   const rosterRows=per.filter(x=>x.am);
   const totR=per.reduce((a,x)=>a+x.r,0);
 
-  /* ---- 1. AM team scorecard ---- */
+  /* ---- 1. Up-sell team scorecard ---- */
   const T={d:rosterRows.reduce((a,x)=>a+x.d,0), r:rosterRows.reduce((a,x)=>a+x.r,0),
            rep:rosterRows.reduce((a,x)=>a+x.rep,0), cu:rosterRows.reduce((a,x)=>a+x.cu,0)};
   // workable = the account has a contact number to call
-  // amBook = the full AM book — every lead owned by an AM agent — independent of the
+  // amBook = the full Up-sell book — every lead owned by an AM agent — independent of the
   // date window (a lead is owned regardless of when it last transacted). Certified /
   // revoked below are the events that happened *in the selected window*, so they read
   // as a share of the stable book rather than of just this window's buyers.
@@ -1370,7 +1435,7 @@ function renderAMTeam(){
   const workable=amBook.filter(c=>{const p=String(c.p||'').trim();return p&&p.toLowerCase()!=='nan';});
   const allAcctFull=CU.filter((c,i)=>custPassND[i]).length;
   const certAM=CU.filter((c,i)=>custPassND[i]&&TEAM.includes(c.o)&&certified(c)), revAM=CU.filter((c,i)=>custPassND[i]&&TEAM.includes(c.o)&&revoked(c));
-  // what the AM team actually CLOSED (Course Deal Owner), not what it owns
+  // what the Up-sell team actually CLOSED (Course Deal Owner), not what it owns
   let cD=0,cR=0;
   for(const i of fDeal){if(TEAM.includes(ODIM[FT.dO[i]])){cD++;cR+=FT.dA[i];}}
   const allWork=fCU.filter(c=>{const p=String(c.p||'').trim();return p&&p.toLowerCase()!=='nan';});
@@ -1382,7 +1447,7 @@ function renderAMTeam(){
     let d=0,r=0; for(let i=0;i<NDEAL;i++){const ci=FT.dU[i];if(!ages.has(ci))continue;if(FT.dG[i]>ruleMaxAgeK||FT.dG[i]>=ages.get(ci))continue;d++;r+=FT.dA[i];}
     return {d,r};};
   const rrAM=revResale(o=>TEAM.includes(o));
-  h=`<div class="sect-t" style="margin-top:0">AM Team</div>
+  h=`<div class="sect-t" style="margin-top:0">Up-sell Team</div>
    ${statStrip([
       ['Total accounts',amBook.length.toLocaleString('en-IN'),`${fpct(amBook.length,allAcctFull)} of all accounts · leads they own`],
       ['Workable accounts',workable.length.toLocaleString('en-IN'),`${fpct(workable.length,amBook.length)} have a contact number`],
@@ -1390,7 +1455,7 @@ function renderAMTeam(){
       ['Certified leads',certAM.length.toLocaleString('en-IN'),`${fpct(certAM.length,amBook.length)} of the book certified`],
    ])}
    <div class="insight bad" style="margin-top:10px"><b>Owning a lead is not the same as closing the sale.</b>
-    The AM team owns <b>${amBook.length.toLocaleString('en-IN')}</b> accounts but closed <b>${cD.toLocaleString('en-IN')}</b> deals (${inr(cR)}).
+    The Up-sell team owns <b>${amBook.length.toLocaleString('en-IN')}</b> accounts but closed <b>${cD.toLocaleString('en-IN')}</b> deals (${inr(cR)}).
     Owner and Course Deal Owner differ on most deals, so revenue below is credited to whoever <i>closed</i> it, and the book to whoever <i>owns</i> it.</div>`;
 
   /* ---- 3. team performance: total vs fresh ---- */
@@ -1401,7 +1466,7 @@ function renderAMTeam(){
   const frO=FR.filter(x=>!TEAM.includes(x.o));   // owners not in the shown team
   const othFR={n90:frO.reduce((a,x)=>a+x.n90,0),nCert:frO.reduce((a,x)=>a+x.nCert,0),nRev:frO.reduce((a,x)=>a+x.nRev,0),
     leads:frO.reduce((a,x)=>a+x.leads,0),uniq:frO.reduce((a,x)=>a+(x.uniq||0),0)};
-  const revCells=(n90,nCert,nRev,leads,uniq,td,tr,fd,fr)=>{
+  const revCells=(n90,nCert,nRev,leads,uniq,td,tr,fd,fr,tr2)=>{
     const con=leads?100*td/leads:0, fcon=leads?100*fd/leads:0;
     return `<td class="n muted">${n90.toLocaleString('en-IN')}</td>
      <td class="n muted">${nCert.toLocaleString('en-IN')}</td>
@@ -1413,6 +1478,7 @@ function renderAMTeam(){
      <td class="n">${fcon.toFixed(1)}%</td>
      <td class="n" style="border-left:1px solid var(--line2)">${td.toLocaleString('en-IN')}</td>
      <td class="n">${inrFull(Math.round(tr))}</td>
+     <td class="n">${inrFull(Math.round(tr2||0))}</td>
      <td class="n">${con.toFixed(1)}%</td>`;
   };
   const revHead=first=>`<thead><tr><th>${first}</th>
@@ -1426,26 +1492,27 @@ function renderAMTeam(){
    <th class="n" title="Fresh Sales ÷ Total Opportunities — conversion of the fresh cohort">Fresh Conv%</th>
    <th class="n" style="border-left:1px solid var(--line2)" title="All deals the agent closed in the window (Oct 2025 on)">Overall Sales</th>
    <th class="n" title="Revenue from all deals the agent closed in the window">Overall Revenue</th>
+   <th class="n" title="Amount Received on the deals the agent closed in the window">Amount received</th>
    <th class="n" title="Overall Sales ÷ Total Opportunities">Overall Conv%</th></tr></thead>`;
   // ---- By agent ----
   let agBody='';
-  frAM.forEach(x=>{const t=TP.tot[x.o]||{d:0,r:0}, f=TP.fr[x.o]||{d:0,r:0};
+  frAM.forEach(x=>{const t=TP.tot[x.o]||{d:0,r:0,r2:0}, f=TP.fr[x.o]||{d:0,r:0};
     agBody+=`<tr class="clickable" onclick="openRep('${esc(x.o).replace(/'/g,"\'")}','fresh')">
-     <td><div class="owner-cell"><span class="avatar" style="width:20px;height:20px;font-size:9px;background:${color4name(x.o)}">${initials(x.o)}</span>${esc(x.o)}${isAM(x.o)?' <span class="chip c-brand">AM</span>':''}</div></td>
-     ${revCells(x.n90,x.nCert,x.nRev,x.leads,x.uniq||0,t.d,t.r,f.d,f.r)}</tr>`;});
+     <td><div class="owner-cell"><span class="avatar" style="width:20px;height:20px;font-size:9px;background:${color4name(x.o)}">${initials(x.o)}</span>${esc(x.o)}${isAM(x.o)?' <span class="chip c-brand">Up-sell</span>':''}</div></td>
+     ${revCells(x.n90,x.nCert,x.nRev,x.leads,x.uniq||0,t.d,t.r,f.d,f.r,t.r2||0)}</tr>`;});
   const agT={n90:frAM.reduce((a,x)=>a+x.n90,0),nCert:frAM.reduce((a,x)=>a+x.nCert,0),nRev:frAM.reduce((a,x)=>a+x.nRev,0),
     leads:frAM.reduce((a,x)=>a+x.leads,0),uniq:frAM.reduce((a,x)=>a+(x.uniq||0),0),
-    td:TEAM.reduce((a,o)=>a+(TP.tot[o]||{d:0}).d,0),tr:TEAM.reduce((a,o)=>a+(TP.tot[o]||{r:0}).r,0),
+    td:TEAM.reduce((a,o)=>a+(TP.tot[o]||{d:0}).d,0),tr:TEAM.reduce((a,o)=>a+(TP.tot[o]||{r:0}).r,0),tr2:TEAM.reduce((a,o)=>a+(TP.tot[o]||{r2:0}).r2,0),
     fd:TEAM.reduce((a,o)=>a+(TP.fr[o]||{d:0}).d,0),fr:TEAM.reduce((a,o)=>a+(TP.fr[o]||{r:0}).r,0)};
-  agBody+=`<tr style="background:var(--soft);font-weight:600"><td>Total</td>${revCells(agT.n90,agT.nCert,agT.nRev,agT.leads,agT.uniq,agT.td,agT.tr,agT.fd,agT.fr)}</tr>`;
+  agBody+=`<tr style="background:var(--soft);font-weight:600"><td>Total</td>${revCells(agT.n90,agT.nCert,agT.nRev,agT.leads,agT.uniq,agT.td,agT.tr,agT.fd,agT.fr,agT.tr2)}</tr>`;
   // ---- By month (team) ----
   const TM=teamMonthly();
   let moBody='';
-  TM.forEach(x=>{moBody+=`<tr><td style="font-weight:600">${monthLabel(x.mo)}</td>${revCells(x.n90,x.nCert,x.nRev,x.leads,x.uniq||0,x.totalD,x.totalR,x.freshD,x.freshR)}</tr>`;});
+  TM.forEach(x=>{moBody+=`<tr><td style="font-weight:600">${monthLabel(x.mo)}</td>${revCells(x.n90,x.nCert,x.nRev,x.leads,x.uniq||0,x.totalD,x.totalR,x.freshD,x.freshR,x.totalR2||0)}</tr>`;});
   const moT={n90:TM.reduce((a,x)=>a+x.n90,0),nCert:TM.reduce((a,x)=>a+x.nCert,0),nRev:TM.reduce((a,x)=>a+x.nRev,0),
     leads:TM.reduce((a,x)=>a+x.leads,0),uniq:TM.reduce((a,x)=>a+(x.uniq||0),0),td:TM.reduce((a,x)=>a+x.totalD,0),tr:TM.reduce((a,x)=>a+x.totalR,0),
-    fd:TM.reduce((a,x)=>a+x.freshD,0),fr:TM.reduce((a,x)=>a+x.freshR,0)};
-  moBody+=`<tr style="background:var(--soft);font-weight:600"><td>Total</td>${revCells(moT.n90,moT.nCert,moT.nRev,moT.leads,moT.uniq,moT.td,moT.tr,moT.fd,moT.fr)}</tr>`;
+    fd:TM.reduce((a,x)=>a+x.freshD,0),fr:TM.reduce((a,x)=>a+x.freshR,0),tr2:TM.reduce((a,x)=>a+(x.totalR2||0),0)};
+  moBody+=`<tr style="background:var(--soft);font-weight:600"><td>Total</td>${revCells(moT.n90,moT.nCert,moT.nRev,moT.leads,moT.uniq,moT.td,moT.tr,moT.fd,moT.fr,moT.tr2)}</tr>`;
 
   h+=`<div class="card panel" style="margin-top:12px"><div class="tbl-head">
    <div><h3>Team Performance</h3></div>
@@ -1462,17 +1529,19 @@ function renderAMTeam(){
     const cells=x=>{const ts=x.d?Math.round(x.r/x.d):0,con=x.accts?100*x.d/x.accts:0;
       return `<td class="n" style="font-weight:600">${x.accts.toLocaleString('en-IN')}</td>
        <td class="n">${x.d.toLocaleString('en-IN')}</td><td class="n">${ts?inrFull(ts):'—'}</td>
-       <td class="n">${con.toFixed(1)}%</td><td class="n" style="font-weight:600">${inrFull(Math.round(x.r))}</td>`;};
+       <td class="n">${con.toFixed(1)}%</td><td class="n" style="font-weight:600">${inrFull(Math.round(x.r))}</td>
+       <td class="n">${inrFull(Math.round(x.r2||0))}</td>`;};
     const head=first=>`<thead><tr><th>${first}</th><th class="n">${acctLbl}</th>
      <th class="n" title="Deals closed from these accounts since Oct 2025">Sales</th>
      <th class="n">Ticket size</th><th class="n" title="Sales ÷ accounts">Con %</th>
-     <th class="n">Revenue achieved</th></tr></thead>`;
+     <th class="n" title="Total deal value (Amount) on those deals">Revenue achieved</th>
+     <th class="n" title="Total Amount Received on those deals">Amount received</th></tr></thead>`;
     const OTH=eventOthers(evt);
-    const AT={accts:AR.reduce((a,x)=>a+x.accts,0)+OTH.accts,d:AR.reduce((a,x)=>a+x.d,0)+OTH.d,r:AR.reduce((a,x)=>a+x.r,0)+OTH.r};
-    const MT={accts:MO.reduce((a,x)=>a+x.accts,0),d:MO.reduce((a,x)=>a+x.d,0),r:MO.reduce((a,x)=>a+x.r,0)};
+    const AT={accts:AR.reduce((a,x)=>a+x.accts,0)+OTH.accts,d:AR.reduce((a,x)=>a+x.d,0)+OTH.d,r:AR.reduce((a,x)=>a+x.r,0)+OTH.r,r2:AR.reduce((a,x)=>a+(x.r2||0),0)+(OTH.r2||0)};
+    const MT={accts:MO.reduce((a,x)=>a+x.accts,0),d:MO.reduce((a,x)=>a+x.d,0),r:MO.reduce((a,x)=>a+x.r,0),r2:MO.reduce((a,x)=>a+(x.r2||0),0)};
     let agBody='';
     AR.forEach(x=>{agBody+=`<tr class="clickable" onclick="openRep('${esc(x.o).replace(/'/g,"\\'")}','${evt}')">
-     <td><div class="owner-cell"><span class="avatar" style="width:20px;height:20px;font-size:9px;background:${color4name(x.o)}">${initials(x.o)}</span>${esc(x.o)}${isAM(x.o)?' <span class="chip c-brand">AM</span>':''}</div></td>${cells(x)}</tr>`;});
+     <td><div class="owner-cell"><span class="avatar" style="width:20px;height:20px;font-size:9px;background:${color4name(x.o)}">${initials(x.o)}</span>${esc(x.o)}${isAM(x.o)?' <span class="chip c-brand">Up-sell</span>':''}</div></td>${cells(x)}</tr>`;});
     agBody+=`<tr style="background:var(--soft)"><td style="font-weight:600;color:var(--muted)">Others</td>${cells(OTH)}</tr>`;
     agBody+=`<tr style="background:var(--soft);font-weight:600"><td>Total</td>${cells(AT)}</tr>`;
     let moBody='';
@@ -1484,43 +1553,13 @@ function renderAMTeam(){
      <div class="rev-seg evtseg_${evt}" style="margin-bottom:12px"><button class="sg on" data-m="agent" onclick="evtToggle('${evt}','agent')">By agent</button><button class="sg" data-m="month" onclick="evtToggle('${evt}','month')">By month</button></div>
      <div id="evtAgent_${evt}"><div class="tbl-wrap tbl-freeze" style="max-height:340px"><table>${head('Agent')}<tbody>${agBody}</tbody></table></div></div>
      <div id="evtMonth_${evt}" style="display:none"><div class="tbl-wrap tbl-freeze" style="max-height:340px"><table>${head('Month')}<tbody>${moBody}</tbody></table></div></div>
-     <div class="hint"><b>${acctLbl}</b> — accounts the agent holds that ${evt==='cert'?'certified':'had access revoked'} <b>with a dated event in the selected window</b> (matches the same column in Team Performance). <b>Sales</b>, <b>Ticket size</b> and <b>Revenue achieved</b> are resale deals closed from those accounts since <b>Oct 2025</b>. <b>Con %</b> is sales ÷ accounts. Click an agent for their ${evt==='cert'?'certified':'access-revoked'} accounts. <b>By month</b> consolidates the whole team.</div></div>`;
+     <div class="hint"><b>${acctLbl}</b> — ${evt==='90d'?'purchases that crossed their 90-day mark <b>inside the selected window</b> (matches the 90d column in Team Performance)':`accounts the agent holds that ${evt==='cert'?'certified':'had access revoked'} <b>with a dated event in the selected window</b> (matches the same column in Team Performance)`}. <b>Sales</b>, <b>Ticket size</b> and <b>Revenue achieved</b> are ${evt==='90d'?'repeat purchases those accounts made after the 90-day mark':'resale deals closed from those accounts'} since <b>Oct 2025</b>. <b>Con %</b> is sales ÷ ${acctLbl.toLowerCase()}. Click an agent for their ${evt==='cert'?'certified':evt==='revoke'?'access-revoked':'90-day'} accounts. <b>By month</b> consolidates the whole team.</div></div>`;
   };
+  h+=evtTable('90d','90-Day Handoffs','90d Handoffs');
   h+=evtTable('cert','Certified Leads','Certified Accounts');
   h+=evtTable('revoke','Access Revoked','Access Revoked Accounts');
 
 
-  /* ================= COURSE MIX: PMP vs OTHER ================= */
-  const CM=courseMix();
-  const cmTot=CM.teamPmp+CM.teamOther;
-  const cmRows=AM.map(o=>({o,...CM.agent[o],tot:CM.agent[o].pmp+CM.agent[o].other})).sort((a,b)=>b.tot-a.tot);
-  const cmLegend=`<div class="hint" style="display:flex;gap:16px;margin-top:6px"><span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--d1);margin-right:5px"></span>PMP</span><span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--d3);margin-right:5px"></span>Other courses</span></div>`;
-  h+=`<div class="card panel" style="margin-top:14px"><h3>What the team is selling — PMP vs Other</h3>
-   <div class="desc">Closed-won courses credited to each AM member as <b>Course Deal Owner</b>, split into PMP and every other course. KPIs and the by-agent table respect the date filter; the charts show the full timeline.</div>
-   <div class="grid k4">
-     <div class="mini-kpi"><div class="c">PMP sold</div><div class="v">${CM.teamPmp.toLocaleString('en-IN')}</div></div>
-     <div class="mini-kpi"><div class="c">Other courses</div><div class="v">${CM.teamOther.toLocaleString('en-IN')}</div></div>
-     <div class="mini-kpi"><div class="c">PMP share</div><div class="v">${fpct(CM.teamPmp,cmTot)}</div></div>
-     <div class="mini-kpi"><div class="c">Total courses</div><div class="v">${cmTot.toLocaleString('en-IN')}</div></div>
-   </div>
-   <div class="sect-t">By agent</div>
-   <div class="tbl-wrap tbl-freeze"><table><thead><tr><th>Agent</th><th class="n">PMP</th><th class="n">Other courses</th><th class="n">Total</th><th class="n">PMP %</th></tr></thead><tbody>
-   ${cmRows.map(x=>`<tr><td><div class="owner-cell"><span class="avatar" style="width:20px;height:20px;font-size:9px;background:${color4name(x.o)}">${initials(x.o)}</span>${esc(x.o)} <span class="chip c-brand">AM</span></div></td>
-     <td class="n" style="font-weight:600">${x.pmp.toLocaleString('en-IN')}</td>
-     <td class="n">${x.other.toLocaleString('en-IN')}</td>
-     <td class="n" style="font-weight:600">${x.tot.toLocaleString('en-IN')}</td>
-     <td class="n muted">${fpct(x.pmp,x.tot)}</td></tr>`).join('')}
-   <tr style="background:var(--soft);font-weight:600"><td>Total</td>
-     <td class="n">${CM.teamPmp.toLocaleString('en-IN')}</td><td class="n">${CM.teamOther.toLocaleString('en-IN')}</td>
-     <td class="n">${cmTot.toLocaleString('en-IN')}</td><td class="n">${fpct(CM.teamPmp,cmTot)}</td></tr>
-   </tbody></table></div>
-   <div class="grid two" style="margin-top:12px">
-     <div class="card panel" style="border:none;padding:0"><div class="sect-t" style="margin-top:0">By month</div>
-     <div class="chart">${CM.month.length?bars(CM.month,{keys:['pmp','other'],colors:['var(--d1)','var(--d3)'],labels:CM.month.map(x=>x.mo.slice(2)),fmt:v=>Math.round(v)}):'<div class="empty">Nothing in this selection.</div>'}</div>${cmLegend}</div>
-     <div class="card panel" style="border:none;padding:0"><div class="sect-t" style="margin-top:0">Last 30 days</div>
-     <div class="chart">${bars(CM.day,{keys:['pmp','other'],colors:['var(--d1)','var(--d3)'],labels:CM.day.map(x=>x.d.slice(8)),fmt:v=>Math.round(v)})}</div>${cmLegend}</div>
-   </div>
-   <div class="insight"><b>The team is selling more ${CM.teamPmp>=CM.teamOther?'PMP':'other courses'}.</b> In view, PMP is ${fpct(CM.teamPmp,cmTot)} of closed-won courses (${CM.teamPmp.toLocaleString('en-IN')} PMP vs ${CM.teamOther.toLocaleString('en-IN')} other). Switch the date filter to focus any month or day.</div></div>`;
 
   return h;
 }
@@ -1542,7 +1581,7 @@ function renderCohorts(){
 
   h+=`<div class="card panel" style="margin-top:14px"><h3>Purchase frequency — full breakdown</h3>
    <div class="desc">Every customer bucketed by how many times they've bought. LTV is lifetime revenue per customer in that bucket.</div>
-   <div class="tbl-wrap"><table><thead><tr><th>Bought</th><th class="n">Customers</th><th class="n">% of base</th><th class="n">Revenue</th><th class="n">% of revenue</th><th class="n">Avg LTV</th><th class="n">AM-owned</th><th class="n">Others</th></tr></thead><tbody>`;
+   <div class="tbl-wrap"><table><thead><tr><th>Bought</th><th class="n">Customers</th><th class="n">% of base</th><th class="n">Revenue</th><th class="n">% of revenue</th><th class="n">Avg LTV</th><th class="n">Up-sell-owned</th><th class="n">Others</th></tr></thead><tbody>`;
   f.forEach(x=>{h+=`<tr><td><span class="chip ${x.l==='1x'?'c-mut':x.l==='2x'?'c-warn':'c-gold'}">${x.l}</span></td>
    <td class="n" style="font-weight:600">${x.n.toLocaleString('en-IN')}</td><td class="n muted">${fpct(x.n,totC)}</td>
    <td class="n" style="font-weight:600">${inr(x.r)}</td><td class="n muted">${fpct(x.r,totR)}</td>
@@ -1564,7 +1603,7 @@ function renderCohorts(){
    <div class="desc">Average lifetime value per customer, by number of purchases.</div>
    <div class="chart">${bars(f,{keys:['ltv'],colors:['var(--d1)'],labels:f.map(x=>x.l),fmt:v=>inr(v)})}</div>
    <div class="insight good">${f[0].ltv&&f[1].ltv?`<b>Getting a customer from 1 → 2 purchases doubles their value</b> (${inrFull(f[0].ltv)} → ${inrFull(f[1].ltv)}). ${f[4].ltv?`From 1 → 5+, it's ${(f[4].ltv/f[0].ltv).toFixed(1)}×.`:''}`:''}
-   <b>${fpct(f[0].n,totC)} of customers still sit at 1x</b>, holding ${inr(f[0].r)}. That single step — one more purchase — is the AM team's whole thesis, and the biggest number on this page.</div>
+   <b>${fpct(f[0].n,totC)} of customers still sit at 1x</b>, holding ${inr(f[0].r)}. That single step — one more purchase — is the Up-sell team's whole thesis, and the biggest number on this page.</div>
    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn-exp" onclick="exportOnce()">⭳ Export 1x customers</button></div></div>`;
   return h;
 }
@@ -1586,11 +1625,11 @@ function renderReps(){
   const cols=[['o','Rep',0],['cu','Customers',1],['d','Deals',1],['r','Revenue',1],['rep','Repeat deals',1],['repR','Repeat revenue',1],['dorm365','Dormant >1y',1],['mature','Mature (90d+)',1]];
   let h=`<div class="card panel"><div class="tbl-head"><h3>Reps — book & performance <span class="muted" style="font-weight:400;font-size:12px">${rows.length} shown</span></h3>
    <button class="btn-exp" onclick="exportReps()">⭳ Export CSV</button></div>
-   <div class="hint" style="margin:-6px 0 12px">AM reps are highlighted. Click any rep to open their book.</div>
+   <div class="hint" style="margin:-6px 0 12px">Up-sell reps are highlighted. Click any rep to open their book.</div>
    <div class="tbl-wrap"><table><thead><tr>`+cols.map(c=>`<th class="${c[2]?'n':''}" onclick="sortO('${c[0]}')">${c[1]}${sortIco(s,c[0])}</th>`).join('')+`</tr></thead><tbody>`;
   rows.forEach(o=>{h+=`<tr class="clickable" onclick="openRep('${esc(o.o).replace(/'/g,"\\'")}')">
    <td><div class="owner-cell"><span class="avatar" style="background:${color4name(o.o)}">${initials(o.o)}</span>
-     <span>${esc(o.o)}${o.am?' <span class="chip c-brand" style="margin-left:4px">AM</span>':''}</span></div></td>
+     <span>${esc(o.o)}${o.am?' <span class="chip c-brand" style="margin-left:4px">Up-sell</span>':''}</span></div></td>
    <td class="n">${o.cu.toLocaleString('en-IN')}</td><td class="n muted">${o.d.toLocaleString('en-IN')}</td>
    <td class="n" style="font-weight:600">${inr(o.r)}</td>
    <td class="n">${o.rep.toLocaleString('en-IN')} <span class="faint">(${fpct(o.rep,o.d)})</span></td>
@@ -1600,7 +1639,7 @@ function renderReps(){
   h+=`</tbody></table></div></div>`;
 
   const am=ownAgg().filter(o=>o.am);
-  h+=`<div class="card panel" style="margin-top:14px"><h3>AM team — like-for-like</h3><div class="desc">Repeat-sales rate is the AM team's actual job. Books are near-identical in size.</div>
+  h+=`<div class="card panel" style="margin-top:14px"><h3>Up-sell team — like-for-like</h3><div class="desc">Repeat-sales rate is the Up-sell team's actual job. Books are near-identical in size.</div>
    <div class="grid two"><div>${hbars(am.map(o=>({label:o.o,v:o.cu,c:'var(--d1)',disp:o.cu.toLocaleString('en-IN')+' cust'})),{lw:120,vw:86})}</div>
    <div>${hbars(am.map(o=>({label:o.o,v:pct(o.rep,o.d),c:'var(--d2)',disp:fpct(o.rep,o.d)})),{lw:120,vw:60})}</div></div>
    <div class="insight"><b>Repeat rates are suspiciously uniform (32–35%).</b> Four reps, four near-identical numbers, on books of 4.1k–5.3k customers. That usually means the outcome is driven by the book, not the rep — i.e. repeat purchase is happening <i>to</i> them rather than <i>because</i> of them. Worth probing before setting individual targets.</div></div>`;
@@ -1620,7 +1659,7 @@ function renderCustomers(){
   if(!view.length)h+=`<tr><td colspan="11" class="empty">No customers match these filters.</td></tr>`;
   view.forEach(c=>{h+=`<tr>
    <td><div style="font-weight:600">${esc(c.n)}</div><div class="muted" style="font-size:11.5px">${esc(c.e)}</div></td>
-   <td><div class="owner-cell"><span class="avatar" style="width:20px;height:20px;font-size:9px;background:${color4name(c.o)}">${initials(c.o)}</span>${esc(c.o)}${c.am?'':' <span class="chip c-mut">non-AM</span>'}</div></td>
+   <td><div class="owner-cell"><span class="avatar" style="width:20px;height:20px;font-size:9px;background:${color4name(c.o)}">${initials(c.o)}</span>${esc(c.o)}${c.am?'':' <span class="chip c-mut">non-Up-sell</span>'}</div></td>
    <td class="muted">${esc(c.c)}</td>
    <td class="n">${c.d>1?`<span class="chip c-gold">${c.d}</span>`:'<span class="faint">1</span>'}</td>
    <td class="n" style="font-weight:600">${inr(c.r)}</td>
@@ -1648,7 +1687,7 @@ function renderUpsell(){
   if(!allPaths.length)return `<div class="card panel"><div class="empty">No upsell paths in this selection.</div></div>`;
   let h=`<div class="card panel"><h3>What PMP buyers buy next</h3><div class="desc">Second-course paths starting from PMP — the dominant entry product.</div>
    ${hbars(up.map(u=>({label:u.b,v:u.n,c:'var(--brand)',disp:u.n.toLocaleString('en-IN')})),{lw:120,vw:56})}
-   <div class="insight"><b>MSP, ACP and AIPMC are the proven next steps</b> — together ${up.slice(0,3).reduce((a,u)=>a+u.n,0).toLocaleString('en-IN')} upsells. That's the AM script: PMP → one of these three. Anything below the top 5 is noise by comparison.</div></div>`;
+   <div class="insight"><b>MSP, ACP and AIPMC are the proven next steps</b> — together ${up.slice(0,3).reduce((a,u)=>a+u.n,0).toLocaleString('en-IN')} upsells. That's the Up-sell script: PMP → one of these three. Anything below the top 5 is noise by comparison.</div></div>`;
 
   h+=`<div class="card panel" style="margin-top:14px"><h3>All upsell paths</h3><div class="desc">Every first-course → next-course pair, by volume.</div>
    <div class="tbl-wrap"><table><thead><tr><th>From</th><th>To</th><th class="n">Customers</th></tr></thead><tbody>`;
@@ -1689,7 +1728,7 @@ function freshAccountsFor(name){
   return [...set].map(i=>CU[i]);
 }
 /* Monthly closings for an agent (as Course Deal Owner) from the rule start
-   (Oct 2025) to the snapshot — the AM performance window. Every month in the
+   (Oct 2025) to the snapshot — the Up-sell performance window. Every month in the
    window is present; months with no sales show zero, so recently-joined agents
    like Nivas still appear with an honest zero run before they started. */
 function agentMonthlyPerf(name){
@@ -1764,6 +1803,7 @@ function openRep(name,mode){
   if(mode==='cert'){book=CU.filter((c,i)=>custPassND[i]&&c.o===name&&certified(c));accLabel='Certified Accounts';hdrNoun='certified accounts in view';}
   else if(mode==='revoke'){book=CU.filter((c,i)=>custPassND[i]&&c.o===name&&revoked(c));accLabel='Access Revoked Accounts';hdrNoun='access-revoked accounts in view';}
   else if(mode==='fresh'){book=freshAccountsFor(name);accLabel='Total Opportunities';hdrNoun='fresh accounts in view';}
+  else if(mode==='90d'){book=ninetyAccountsFor(name);accLabel='90-Day Accounts';hdrNoun='90-day accounts in view';}
   else book=fCU.filter(c=>c.o===name);
   const rep=book.filter(c=>c.d>1),dorm=book.filter(c=>c.dm>=365),cert=book.filter(c=>c.ct),revk=book.filter(c=>revoked(c)),pmpOnly=book.filter(c=>c.cs==='PMP'&&c.d===1);
   const rev=book.reduce((a,c)=>a+c.r,0);
@@ -1797,7 +1837,7 @@ function openRep(name,mode){
   const cc={};book.forEach(c=>c.cs.split('|').forEach(x=>cc[x]=(cc[x]||0)+1));
   const ccr=Object.entries(cc).map(([k,v])=>({label:k,v,c:'var(--brand)',disp:v.toLocaleString('en-IN')})).sort((a,b)=>b.v-a.v).slice(0,8);
   let h=`<div class="dh"><span class="avatar" style="background:${color4name(name)}">${initials(name)}</span>
-   <div><h2>${esc(name)}${isAM(name)?' <span class="chip c-brand">AM</span>':''}</h2>
+   <div><h2>${esc(name)}${isAM(name)?' <span class="chip c-brand">Up-sell</span>':''}</h2>
    <div class="r">${book.length.toLocaleString('en-IN')} ${hdrNoun} · ${inr(rev)} lifetime</div></div>
    <button class="close" onclick="closeDrawer()">×</button></div><div class="dbody">
    <div class="grid k4">`+mk.map(m=>`<div class="mini-kpi"><div class="c">${m[0]}</div><div class="v">${m[1]}</div></div>`).join('')+`</div>`;
@@ -1805,7 +1845,7 @@ function openRep(name,mode){
     const noun=mode==='cert'?`${esc(name)}'s certified accounts`:mode==='revoke'?`${esc(name)}'s access-revoked accounts`:`${esc(name)}`;
     h+=`<div class="sect-t">Performance — month by month</div><div class="card panel">
      <div class="chart">${perfBars(perf)}</div>
-     <div class="hint" id="perfCap" style="margin-top:4px">Revenue closed each month ${mode==='fresh'?`by ${noun}`:`from ${noun}`} since the AM rule began (Oct 2025). Tap a bar for the exact figure and deal count.</div></div>`;
+     <div class="hint" id="perfCap" style="margin-top:4px">Revenue closed each month ${mode==='fresh'?`by ${noun}`:`from ${noun}`} since the Up-sell rule began (Oct 2025). Tap a bar for the exact figure and deal count.</div></div>`;
   }else{
     h+=`<div class="sect-t">Book health — dormancy</div><div class="card panel">${hbars(bk.map(b=>({...b,disp:b.v.toLocaleString('en-IN')})),{lw:80,vw:56})}</div>`;
   }
@@ -2200,7 +2240,7 @@ const NAVGROUPS=[
   ['Insights',['cohorts','upsell']],
   ['Detail',['reps','customers']],
 ];
-const TAB_META={overview:['Accounts Overview','Account health, repeat behaviour and ticket size'],amteam:['AM Team','Team output and ticket size'],
+const TAB_META={overview:['Accounts Overview','Account health, repeat behaviour and ticket size'],amteam:['Up-sell Team','Team output and ticket size'],
   cohorts:['Cohorts','Customers by purchase frequency'],
   reps:['Reps','Per-rep book and performance'],customers:['Customers','Row-level detail'],
   upsell:['Upsell','Course paths and targets']};
@@ -2250,10 +2290,10 @@ const SPEC={
   regionOther:'Other',
   regionOrder:['India','USA','CA','GB','Gulf','Europe','Other'],
   internalDomain:'@eduhubspot.com',
-  // The AM team's inception is Oct 2025 — all team performance (Total & Fresh
+  // The Up-sell team's inception is Oct 2025 — all team performance (Total & Fresh
   // sales, revenue, conversions, 90d handoffs and the By-month timeline) is
   // assessed from this month onward. Deals closed before Oct 2025 never entered
-  // the AM round robin and must not count.
+  // the Up-sell round robin and must not count.
   ruleStart:'2025-10-01',
   // Some @eduhubspot.com addresses are genuine salespeople whose real, paid deals
   // are keyed to their work email. These are NOT excluded — their payments count.
@@ -2341,6 +2381,7 @@ function buildModel(rows,amList){
       rg:regionOf((get(r,'Country').split(' --- ')[0]||'Unknown').trim()),
       c:get(r,'Course Deal Name')||'(none)',
       a:amt0,
+      arcv:(parseFloat(String(get(r,'Amount Received')).replace(/[^0-9.\-]/g,''))||0),
       src:get(r,'Source')||'(not set)',
       certName:get(r,'Last Certified'),
       certDate:pdate(get(r,'Last Certified Date')),
@@ -2415,10 +2456,10 @@ function buildModel(rows,amList){
 
   const N=deals.length;
   const fact={dM:new Array(N),dO:new Array(N),dC:new Array(N),dA:new Array(N),
-              dR:new Array(N),dU:new Array(N),dG:new Array(N)};
+              dAR:new Array(N),dR:new Array(N),dU:new Array(N),dG:new Array(N)};
   deals.forEach((d,i)=>{
     fact.dM[i]=mI[ymOf(d.cd)];fact.dO[i]=oI[d.dOwn];fact.dC[i]=cI[d.c];
-    fact.dA[i]=d.a;fact.dR[i]=d.rep;fact.dU[i]=cIdx[d.e];
+    fact.dA[i]=d.a;fact.dAR[i]=d.arcv;fact.dR[i]=d.rep;fact.dU[i]=cIdx[d.e];
     fact.dG[i]=Math.round((today-d.cd)/DAY);
   });
   const countries=[...new Set(cust.map(c=>c.c))].sort();
@@ -2445,7 +2486,7 @@ function buildModel(rows,amList){
     cust,months,ownersD:owners,coursesD:courses,fact}};
 }
 
-/* ---------- config (AM roster) ---------- */
+/* ---------- config (Up-sell roster) ---------- */
 const LSK='ehs.am.roster.v2';
 function loadRoster(){try{const v=localStorage.getItem(LSK);return v?JSON.parse(v):null;}catch(e){return null;}}
 function saveRoster(a){try{localStorage.setItem(LSK,JSON.stringify(a));}catch(e){}}
@@ -2514,7 +2555,7 @@ function handleFile(file){
         const notes=[];
         const sk=built.skip, n=sk.noDate+sk.noEmail+(sk.noAmount||0)+(sk.notWon||0);
         if(n)notes.push(`${n.toLocaleString('en-IN')} row${n>1?'s':''} skipped (${inr(sk.value)})`);
-        if(miss.length)notes.push(`AM roster not in report: ${miss.join(', ')}`);
+        if(miss.length)notes.push(`Up-sell roster not in report: ${miss.join(', ')}`);
         if(notes.length)toast(notes.join(' · ')+' — see Data notes');
       }catch(err){gateMsg('bad','That file could not be parsed.',String(err.message||err));}
     },30);
@@ -2534,7 +2575,7 @@ function reload(){
   document.getElementById('gateFile').value='';
   if(CACHED&&CACHED.csv)showCachedOption(CACHED.savedAt); else hideCachedOption();
 }
-/* ---------- settings: AM roster ---------- */
+/* ---------- settings: Up-sell roster ---------- */
 function openNotes(){
   const sk=LAST_SKIP||{noDate:0,noEmail:0,value:0,names:[]};
   const n=sk.noDate+sk.noEmail+(sk.noAmount||0)+(sk.notWon||0);
@@ -2576,7 +2617,7 @@ function openNotes(){
      <b>Customer</b> = unique email, so one person buying four courses is one account with four deals.<br>
      <b>Repeat</b> = any deal after that email's first-ever closing date.<br>
      <b>As of</b> = the latest Closing Date in the file (${META.today}), not today's date — so Week and Month are relative to the report, and dormancy is measured from it.<br>
-     <b>AM team</b> = the roster in Settings, matched on Owner.<br>
+     <b>Up-sell team</b> = the roster in Settings, matched on Owner.<br>
      <b>Region</b> = mapped from the account's Country. GB is separate from Europe; Gulf is the six GCC states.<br>
      <b>Access revoked</b> = the <b>Access Revoked</b> field in the report. Account-level, so it counts customers rather than courses. Earlier builds derived this as purchase + 365 days; the real flag disagreed with that model 52% of the time, so nothing is derived now.<br>
      <b>Certified</b> = has a Last Certified name or a Last Certified Date. ${META.certCov?`Dates only exist from ${META.certCov.min}, so certification trends are not all-time.`:''}
@@ -2586,10 +2627,10 @@ function openNotes(){
 function openSettings(){
   const roster=loadRoster()||SPEC.defaultAM;
   const list=OWNERS.length?OWNERS:SPEC.defaultAM;
-  let h=`<div class="dh"><div><h2>Settings</h2><div class="r">Who counts as the AM team</div></div>
+  let h=`<div class="dh"><div><h2>Settings</h2><div class="r">Who counts as the Up-sell team</div></div>
    <button class="close" onclick="closeDrawer()">×</button></div><div class="dbody">
-   <div class="card panel"><h3>AM team roster</h3>
-   <div class="desc">Accounts owned by these people are treated as the AM book. Everyone else is "Others". Saved in this browser.</div>
+   <div class="card panel"><h3>Up-sell team roster</h3>
+   <div class="desc">Accounts owned by these people are treated as the Up-sell book. Everyone else is "Others". Saved in this browser.</div>
    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:340px;overflow:auto">`;
   list.forEach(o=>{h+=`<label class="rosrow"><input type="checkbox" value="${esc(o)}" ${roster.includes(o)?'checked':''}> ${esc(o)}</label>`;});
   h+=`</div>
@@ -2603,10 +2644,10 @@ function applyRoster(){
   const picked=[...document.querySelectorAll('.rosrow input:checked')].map(i=>i.value);
   saveRoster(picked);
   closeDrawer();
-  if(LAST_ROWS){const b=buildModel(LAST_ROWS,picked);if(b.ok){mount(b.model);toast('AM roster updated — '+picked.length+' member'+(picked.length===1?'':'s')+'.');}}
+  if(LAST_ROWS){const b=buildModel(LAST_ROWS,picked);if(b.ok){mount(b.model);toast('Up-sell roster updated — '+picked.length+' member'+(picked.length===1?'':'s')+'.');}}
 }
 function resetRoster(){saveRoster(SPEC.defaultAM);closeDrawer();
-  if(LAST_ROWS){const b=buildModel(LAST_ROWS,SPEC.defaultAM);if(b.ok){mount(b.model);toast('AM roster reset to default.');}}}
+  if(LAST_ROWS){const b=buildModel(LAST_ROWS,SPEC.defaultAM);if(b.ok){mount(b.model);toast('Up-sell roster reset to default.');}}}
 
 function initGate(){
   const dz=document.getElementById('drop'), fi=document.getElementById('gateFile');
